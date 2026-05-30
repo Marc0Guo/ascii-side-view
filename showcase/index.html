@@ -69,9 +69,10 @@
   .main-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 
   .views {
-    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px;
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px;
   }
-  @media (max-width: 720px) { .views { grid-template-columns: 1fr; } }
+  @media (max-width: 960px) { .views { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 520px) { .views { grid-template-columns: 1fr; } }
 
   .view-panel {
     background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
@@ -81,21 +82,33 @@
     font-family: var(--display); font-size: 10px; text-transform: uppercase;
     letter-spacing: 0.14em; color: var(--muted); margin-bottom: 8px; font-weight: 700;
   }
+  .diff-key {
+    margin-top: 6px; font-size: 9px; color: var(--muted); letter-spacing: 0.04em;
+    text-align: center;
+  }
   .ascii-wrap {
     flex: 1; display: flex; align-items: center; justify-content: center;
     overflow: auto; padding: 6px; background: #06080c; border-radius: 4px;
     border: 1px solid #151b24;
   }
   pre.ascii {
-    font-family: var(--mono); font-size: 13px; line-height: 1.12;
+    font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+    font-size: 11px; line-height: 1.05;
     letter-spacing: 0; white-space: pre; cursor: crosshair;
   }
-  .cell { display: inline-block; width: 1ch; text-align: center; }
-  .cell.solid { color: var(--solid); text-shadow: 0 0 6px rgba(240,244,250,.25); }
-  .cell.empty { color: #2a3344; }
-  .cell.match { color: var(--good); }
-  .cell.fp { color: var(--warn); }
-  .cell.fn { color: var(--bad); }
+  .cell {
+    display: inline-block; width: 1.05em; height: 1.05em;
+    text-align: center; vertical-align: top; line-height: 1.05;
+    border-radius: 2px;
+  }
+  .cell.solid, .cell.match { filter: none; }
+  .cell.empty, .cell.match-empty {
+    background: #151c28;
+    border: 1px solid #243044;
+    opacity: 0.95;
+  }
+  .cell.empty::after, .cell.match-empty::after { content: ""; }
+  .cell.fp, .cell.fn { opacity: 1; }
 
   .desc-bar {
     background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
@@ -220,8 +233,9 @@
     <div class="main-col">
       <div class="views">
         <div class="view-panel"><h3>Front view</h3><div class="ascii-wrap"><pre class="ascii" id="front"></pre></div></div>
+        <div class="view-panel"><h3>Expected shape</h3><div class="ascii-wrap"><pre class="ascii" id="expected"></pre></div></div>
         <div class="view-panel"><h3>Model submission</h3><div class="ascii-wrap"><pre class="ascii" id="submitted"></pre></div></div>
-        <div class="view-panel"><h3>Expected · diff</h3><div class="ascii-wrap"><pre class="ascii" id="diff"></pre></div></div>
+        <div class="view-panel"><h3>Expected · diff</h3><div class="ascii-wrap"><pre class="ascii" id="diff"></pre></div><div class="diff-key">🟨 match · ▫ empty · 🟩 + · 🟥 −</div></div>
       </div>
 
       <div class="desc-bar">
@@ -292,7 +306,26 @@ async function loadReplay() {
   return null;
 }
 
-const DIFF_LEGEND = { '=': 'match', '.': 'empty', '+': 'fp', '-': 'fn' };
+const DIFF_LEGEND = { '=': 'match', '.': 'match-empty', '+': 'fp', '-': 'fn' };
+const EMO_SOLID = '\uD83D\uDFE7';   // 🟨 voxel / match
+const EMO_FP = '\uD83D\uDFE9';      // 🟩 extra (+)
+const EMO_FN = '\uD83D\uDFE5';      // 🟥 missing (-)
+
+/** Map stored #/. (or diff symbols) to emoji tiles for display only. */
+function toEmoji(ch, mode) {
+  if (mode === 'solid') {
+    if (ch === '#') return EMO_SOLID;
+    if (ch === '.' || ch === '\u00B7' || ch === ' ') return '';
+    return ch;
+  }
+  if (mode === 'diff') {
+    if (ch === '=') return EMO_SOLID;
+    if (ch === '.') return '';
+    if (ch === '+') return EMO_FP;
+    if (ch === '-') return EMO_FN;
+  }
+  return ch;
+}
 
 function gridToAscii(gridJson) {
   try {
@@ -302,25 +335,47 @@ function gridToAscii(gridJson) {
   } catch (e) { return ''; }
 }
 
-function extractAsciiOnly(text) {
+function extractAsciiOnly(text, preferRows, preferCols) {
   if (!text) return '';
   const lines = text.split('\n');
   const blocks = [];
   let cur = [];
   for (const line of lines) {
-    const s = line.replace(/·/g, '.');
+    const s = line.replace(/\u00B7/g, '.');
     if (/^[#.\s]+$/.test(s) && /[#.]/.test(s)) cur.push(s.replace(/\s+$/, ''));
     else if (cur.length) { blocks.push(cur); cur = []; }
   }
   if (cur.length) blocks.push(cur);
   if (!blocks.length) return '';
-  return blocks.reduce((a, b) => a.length >= b.length ? a : b).join('\n');
+
+  if (preferRows != null && preferCols != null) {
+    const hit = blocks.find(b => b.length === preferRows && b[0]?.length === preferCols);
+    if (hit) return hit.join('\n');
+  }
+  return blocks.reduce((a, b) => (a.length * (a[0]?.length || 0) >= b.length * (b[0]?.length || 0) ? a : b)).join('\n');
+}
+
+function expectedSide(info) {
+  const side = info.expected_side || '';
+  if (side) return side.replace(/\u00B7/g, '.');
+  return gridToAscii(info.expected_grid);
 }
 
 function parsedSubmission(info, turn) {
-  return info.parsed_side
-    || gridToAscii(info.submitted_grid)
-    || extractAsciiOnly(info.submitted_side || turn.action || '');
+  const raw = info.submitted_side || turn.action || '';
+  let preferRows, preferCols;
+  try {
+    const shape = JSON.parse(info.expected_shape || info.submitted_shape || 'null');
+    if (Array.isArray(shape) && shape.length === 2) [preferRows, preferCols] = shape;
+  } catch (e) { /* ignore */ }
+
+  const extracted = extractAsciiOnly(raw, preferRows, preferCols);
+  if (extracted) return extracted;
+
+  const fromGrid = gridToAscii(info.submitted_grid);
+  if (fromGrid) return fromGrid;
+
+  return info.parsed_side || '';
 }
 
 function renderAscii(el, text, mode, hoverCb) {
@@ -330,7 +385,7 @@ function renderAscii(el, text, mode, hoverCb) {
     [...line].forEach((ch, c) => {
       const span = document.createElement('span');
       span.className = 'cell';
-      span.textContent = ch === ' ' ? '·' : ch;
+      span.textContent = toEmoji(ch, mode) || '\u00A0';
       if (mode === 'solid') {
         span.classList.add(ch === '#' ? 'solid' : 'empty');
       } else if (mode === 'diff') {
@@ -389,10 +444,14 @@ class App {
       tip.style.display = 'block';
       tip.style.left = (e.clientX + 12) + 'px';
       tip.style.top = (e.clientY + 12) + 'px';
-      const labels = { '#': 'solid voxel', '.': 'empty', '=': 'correct', '+': 'extra (false +)', '-': 'missing (false −)' };
+      const labels = {
+        '#': 'solid 🟨', '.': 'empty', '=': 'match 🟨',
+        '+': 'extra 🟩', '-': 'missing 🟥',
+      };
       tip.textContent = `(${r},${c}) ${labels[ch] || ch}`;
     };
     renderAscii(document.getElementById('front'), info.front_view || '', 'solid', hover);
+    renderAscii(document.getElementById('expected'), expectedSide(info), 'solid', hover);
     renderAscii(document.getElementById('submitted'), parsedSubmission(info, t), 'solid', hover);
     let diffText = '';
     try {
