@@ -9,7 +9,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from env import AsciiSideViewEnv, CATALOG, score_side_view  # noqa: E402
+from env import AsciiSideViewEnv, CATALOG, MUG_PUZZLE, score_side_view  # noqa: E402
 
 
 def _run_episode(env: AsciiSideViewEnv, seed: int, action_fn) -> tuple[float, dict]:
@@ -48,33 +48,79 @@ def test_smart_vs_dumb() -> None:
     env = AsciiSideViewEnv()
     smart_rewards: list[float] = []
     dumb_rewards: list[float] = []
+    expected = MUG_PUZZLE.side
 
-    for seed in range(40):
-        obs = env.reset(seed=seed)
-        expected = env._puzzle.side  # noqa: SLF001 — test access
-        front = obs["front_view"]
-
+    for seed in range(20):
+        env.reset(seed=seed)
         smart_rewards.append(env.step(expected).reward)
 
         env.reset(seed=seed)
-        dumb_rewards.append(env.step(front).reward)
+        dumb_rewards.append(env.step(MUG_PUZZLE.front).reward)
 
     smart_mean = sum(smart_rewards) / len(smart_rewards)
     dumb_mean = sum(dumb_rewards) / len(dumb_rewards)
-    print(f"smart mean reward: {smart_mean:.3f}")
-    print(f"dumb  mean reward: {dumb_mean:.3f}")
-    assert smart_mean > 0.9, "smart policy should score near-perfect"
-    assert dumb_mean < smart_mean - 0.15, "dumb policy must score meaningfully worse"
+    print(f"smart mean step-reward: {smart_mean:.3f}")
+    print(f"dumb  mean step-reward: {dumb_mean:.3f}")
+    assert smart_mean > 0.85, "exact side view should score high"
+    assert dumb_mean < smart_mean - 0.1, "front-view mirror must score worse"
     print("smart-vs-dumb: OK")
 
 
+def test_same_prompt_every_seed() -> None:
+    env = AsciiSideViewEnv()
+    first = env.reset(seed=0)["front_view"]
+    for seed in range(1, 30):
+        assert env.reset(seed=seed)["front_view"] == first
+    print("same-prompt-all-seeds: OK")
+
+
+def test_iou_delta_multistep() -> None:
+    env = AsciiSideViewEnv()
+    env.reset(seed=0)
+    r1 = env.step(MUG_PUZZLE.front)
+    assert float(r1.info["iou_delta"]) == float(r1.info["iou"])
+    if not r1.terminated:
+        r2 = env.step(MUG_PUZZLE.side)
+        assert float(r2.info["iou_delta"]) >= 0
+        assert float(r2.info["iou"]) > float(r1.info["iou"])
+    print("iou-delta-multistep: OK")
+
+
+def test_illegal_char_penalty() -> None:
+    from env import evaluate_submission
+
+    stats = evaluate_submission("hello\n.##.", MUG_PUZZLE.side)
+    assert stats["illegal_count"] > 0
+    assert stats["illegal_penalty"] > 0
+    print("illegal-char-penalty: OK")
+
+
 def test_mug_example() -> None:
-    mug = next(p for p in CATALOG if p.name == "mug")
-    reward, stats = score_side_view(mug.side, mug.side)
+    reward, stats = score_side_view(MUG_PUZZLE.side, MUG_PUZZLE.side)
     assert reward >= 0.99 and stats["exact"]
-    reward_front, _ = score_side_view(mug.front, mug.side)
+    reward_front, _ = score_side_view(MUG_PUZZLE.front, MUG_PUZZLE.side)
     assert reward_front < 0.85
     print("mug example: OK")
+
+
+def test_prose_stripped_from_parse() -> None:
+    from env import _parse_ascii, _grid_to_text
+
+    messy = (
+        "The front view shows a base of width 5 and a tower of width 3.\n"
+        "Rotating this 90 degrees to the right...\n\n"
+        ".......\n"
+        ".#####.\n"
+        ".#####.\n"
+        "..###..\n"
+        "......."
+    )
+    grid = _parse_ascii(messy)
+    text = _grid_to_text(grid)
+    assert "The" not in text
+    assert ".#####." in text
+    assert len(grid) == 5
+    print("prose-stripped parse: OK")
 
 
 def test_catalog_nonempty() -> None:
@@ -88,6 +134,10 @@ def test_catalog_nonempty() -> None:
 if __name__ == "__main__":
     test_catalog_nonempty()
     test_mug_example()
+    test_prose_stripped_from_parse()
+    test_same_prompt_every_seed()
+    test_illegal_char_penalty()
+    test_iou_delta_multistep()
     test_determinism()
     test_info_strings()
     test_smart_vs_dumb()

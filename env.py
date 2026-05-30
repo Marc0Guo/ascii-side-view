@@ -10,7 +10,6 @@ Objects are defined as 3D voxel sets; views are max-projections onto the X–Y
 from __future__ import annotations
 
 import json
-import random
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -219,21 +218,50 @@ def _build_catalog() -> list[Puzzle]:
 
 
 CATALOG = _build_catalog()
+MUG_PUZZLE = CATALOG[0]  # fixed demo prompt — same front view every episode
+
+ILLEGAL_CHAR_PENALTY = 0.02  # per letter/digit in raw output
+ILLEGAL_CHAR_PENALTY_CAP = 0.25
+SIZE_MISMATCH_PENALTY = 0.12
+
+
+def _is_ascii_row(line: str) -> bool:
+    """True if the line looks like an ASCII-art row (only # . whitespace)."""
+    s = line.replace("·", ".").rstrip()
+    if not s.strip():
+        return False
+    if re.search(r"[a-zA-Z0-9]", s):
+        return False
+    if not re.search(r"[#.]", s):
+        return False
+    return bool(re.fullmatch(r"[#.\s]+", s))
+
+
+def _grid_to_text(grid: list[list[str]]) -> str:
+    if not grid:
+        return "."
+    return "\n".join("".join(row) for row in grid)
 
 
 def _parse_ascii(text: str) -> list[list[str]]:
-    """Extract a grid of #/. from free-form model output."""
+    """Extract a grid of #/. from model output; ignore prose/explanation lines."""
     if not text:
         return [["."]]
-    # Strip markdown fences
     fenced = re.findall(r"```(?:ascii|text)?\s*\n(.*?)```", text, re.S | re.I)
-    body = fenced[0] if fenced else text
-    rows: list[str] = []
+    body = fenced[-1] if fenced else text
+
+    blocks: list[list[str]] = []
+    current: list[str] = []
     for line in body.splitlines():
-        stripped = line.rstrip("\n")
-        if re.search(r"[#·.]", stripped):
-            normalized = stripped.replace("·", ".")
-            rows.append(normalized)
+        if _is_ascii_row(line):
+            current.append(line.replace("·", ".").rstrip())
+        elif current:
+            blocks.append(current)
+            current = []
+    if current:
+        blocks.append(current)
+
+    rows = max(blocks, key=len) if blocks else []
     if not rows:
         return [["."]]
     w = max(len(r) for r in rows)
@@ -271,25 +299,45 @@ def _pad_to(grid: list[list[str]], h: int, w: int) -> list[list[str]]:
     return out
 
 
-def score_side_view(submitted: str, expected: str) -> tuple[float, dict[str, Any]]:
-    """Return reward in [0,1] and diagnostic stats."""
-    sub = _trim_grid(_parse_ascii(submitted))
+def _expected_shape(expected: str) -> tuple[int, int]:
+    lines = [ln for ln in expected.splitlines() if ln.strip()]
+    if not lines:
+        return 1, 1
+    return len(lines), max(len(ln) for ln in lines)
+
+
+def _count_illegal_chars(text: str) -> int:
+    return len(re.findall(r"[a-zA-Z0-9]", text))
+
+
+def evaluate_submission(
+    submitted: str,
+    expected: str,
+    prev_iou: float = 0.0,
+) -> dict[str, Any]:
+    """Score one submission: IoU vs target, step reward = IoU gain − penalties."""
+    illegal_count = _count_illegal_chars(submitted)
+    illegal_penalty = min(ILLEGAL_CHAR_PENALTY_CAP, ILLEGAL_CHAR_PENALTY * illegal_count)
+
+    sub_block = _parse_ascii(submitted)
+    exp_h, exp_w = _expected_shape(expected)
+    sub_h = len(sub_block)
+    sub_w = max(len(r) for r in sub_block) if sub_block else 0
+    size_mismatch = (sub_h != exp_h) or (sub_w != exp_w)
+    size_penalty = SIZE_MISMATCH_PENALTY if size_mismatch else 0.0
+
+    sub = _trim_grid(sub_block)
     exp = _trim_grid(_parse_ascii(expected))
     h = max(len(sub), len(exp))
     w = max(len(sub[0]) if sub else 0, len(exp[0]) if exp else 0)
     sub_p = _pad_to(sub, h, w)
     exp_p = _pad_to(exp, h, w)
 
-    matches = 0
-    total = 0
-    false_pos = 0
-    false_neg = 0
+    matches = false_pos = false_neg = 0
     for r in range(h):
         for c in range(w):
-            s = sub_p[r][c] == "#"
-            e = exp_p[r][c] == "#"
+            s, e = sub_p[r][c] == "#", exp_p[r][c] == "#"
             if s or e:
-                total += 1
                 if s and e:
                     matches += 1
                 elif s:
@@ -297,48 +345,99 @@ def score_side_view(submitted: str, expected: str) -> tuple[float, dict[str, Any
                 else:
                     false_neg += 1
 
+    total = matches + false_pos + false_neg
     if total == 0:
         iou = 1.0 if submitted.strip() == expected.strip() else 0.0
     else:
-        union = matches + false_pos + false_neg
-        iou = matches / union if union else 0.0
+        iou = matches / total
 
     exact = sub_p == exp_p
-    # Non-binary reward: IoU base + exact-match bonus
-    reward = min(1.0, iou * 0.85 + (0.15 if exact else 0.0))
-    stats = {
+    iou_delta = max(0.0, iou - prev_iou)
+    step_reward = iou_delta - illegal_penalty - size_penalty
+
+    return {
         "iou": iou,
+        "iou_delta": iou_delta,
+        "step_reward": step_reward,
+        "illegal_count": illegal_count,
+        "illegal_penalty": illegal_penalty,
+        "size_mismatch": size_mismatch,
+        "size_penalty": size_penalty,
+        "expected_h": exp_h,
+        "expected_w": exp_w,
+        "submitted_h": sub_h,
+        "submitted_w": sub_w,
+        "exact": exact,
         "matches": matches,
         "total": total,
         "false_pos": false_pos,
         "false_neg": false_neg,
-        "exact": exact,
+        "sub_grid": sub,
+        "sub_p": sub_p,
+        "exp_p": exp_p,
+        "parsed_text": _grid_to_text(sub),
     }
-    return reward, stats
+
+
+def score_side_view(submitted: str, expected: str) -> tuple[float, dict[str, Any]]:
+    """Backward-compatible wrapper (single-step, no prior IoU)."""
+    stats = evaluate_submission(submitted, expected, prev_iou=0.0)
+    return stats["step_reward"], stats
 
 
 class AsciiSideViewEnv(BaseEnv):
-    """Single-turn: front ASCII + description → side ASCII."""
+    """Multi-step refinement on a fixed mug prompt. Step reward = IoU gain − penalties."""
 
     def __init__(self) -> None:
-        self._rng = random.Random()
         self._puzzle: Puzzle | None = None
         self._seed = 0
         self._steps = 0
-        self.max_steps = 1
+        self.max_steps = 5
+        self._prev_iou = 0.0
+        self._best_iou = 0.0
+        self._episode_reward = 0.0
+        self._last_parsed = ""
 
     def reset(self, seed: int | None = None, **params: Any) -> dict[str, Any]:
         self._seed = 0 if seed is None else int(seed)
-        self._rng.seed(self._seed)
-        self.max_steps = int(params.get("max_steps", 1))
+        self.max_steps = min(35, int(params.get("max_steps", 5)))
         self._steps = 0
-        self._puzzle = self._rng.choice(CATALOG)
-        return {
+        self._prev_iou = 0.0
+        self._best_iou = 0.0
+        self._episode_reward = 0.0
+        self._last_parsed = ""
+        self._puzzle = MUG_PUZZLE
+        return self._observation(include_feedback=False)
+
+    def _observation(self, include_feedback: bool) -> dict[str, Any]:
+        assert self._puzzle is not None
+        obs: dict[str, Any] = {
             "task": "Given the front view and description, output the side view (90° rotation to the right).",
             "description": self._puzzle.description,
             "front_view": self._puzzle.front,
-            "hint": "Reply with ONLY the side-view ASCII art using # for solid and . for empty.",
+            "output_rules": (
+                "STRICT OUTPUT FORMAT: reply with ONLY the side-view ASCII grid. "
+                "Each line must contain ONLY # (solid) and . (empty) — no words, "
+                "no explanation, no markdown fences, no labels. "
+                f"Grid must be exactly {self._expected_shape()[0]} rows × "
+                f"{self._expected_shape()[1]} columns (matching front-view canvas size)."
+            ),
+            "example": ".####.\n######\n.####.",
+            "steps_left": self.max_steps - self._steps,
         }
+        if include_feedback:
+            obs["previous_iou"] = round(self._prev_iou, 4)
+            obs["best_iou"] = round(self._best_iou, 4)
+            obs["previous_submission"] = self._last_parsed
+            obs["feedback"] = (
+                f"Previous IoU={self._prev_iou:.3f}. "
+                "Submit an improved side view (IoU gain − penalties per step)."
+            )
+        return obs
+
+    def _expected_shape(self) -> tuple[int, int]:
+        assert self._puzzle is not None
+        return _expected_shape(self._puzzle.side)
 
     def step(self, action: Any) -> StepResult:
         if self._puzzle is None:
@@ -346,19 +445,31 @@ class AsciiSideViewEnv(BaseEnv):
 
         self._steps += 1
         submitted = str(action)
-        reward, stats = score_side_view(submitted, self._puzzle.side)
-        exact = stats["exact"]
+        stats = evaluate_submission(submitted, self._puzzle.side, prev_iou=self._prev_iou)
+        step_reward = stats["step_reward"]
+        self._episode_reward += step_reward
+        self._prev_iou = stats["iou"]
+        self._best_iou = max(self._best_iou, stats["iou"])
+        self._last_parsed = stats["parsed_text"]
 
-        terminated = True
-        truncated = False
+        exact = stats["exact"]
+        terminated = exact or self._steps >= self.max_steps
+        truncated = self._steps >= self.max_steps and not exact
+
+        if terminated or truncated:
+            observation: dict[str, Any] = {
+                "result": "done",
+                "final_iou": round(stats["iou"], 4),
+                "best_iou": round(self._best_iou, 4),
+                "episode_reward": round(self._episode_reward, 4),
+                "exact_match": exact,
+            }
+        else:
+            observation = self._observation(include_feedback=True)
 
         return StepResult(
-            observation={
-                "result": "scored",
-                "iou": round(stats["iou"], 4),
-                "exact_match": exact,
-            },
-            reward=reward,
+            observation=observation,
+            reward=step_reward,
             terminated=terminated,
             truncated=truncated,
             info=self._info(submitted, stats),
@@ -367,22 +478,19 @@ class AsciiSideViewEnv(BaseEnv):
     def _info(self, submitted: str, stats: dict[str, Any]) -> dict[str, str]:
         assert self._puzzle is not None
         p = self._puzzle
-        sub_grid = _trim_grid(_parse_ascii(submitted))
-        exp_grid = _trim_grid(_parse_ascii(p.side))
-        diff_rows: list[list[str]] = []
-        h = max(len(sub_grid), len(exp_grid))
-        w = max(len(sub_grid[0]) if sub_grid else 0, len(exp_grid[0]) if exp_grid else 0)
-        sub_p = _pad_to(sub_grid, h, w)
-        exp_p = _pad_to(exp_grid, h, w)
+        sub_p = stats["sub_p"]
+        exp_p = stats["exp_p"]
+        h, w = len(sub_p), len(sub_p[0]) if sub_p else 0
+        diff_rows: list[str] = []
         for r in range(h):
             row: list[str] = []
             for c in range(w):
                 if sub_p[r][c] == exp_p[r][c]:
                     row.append("=" if sub_p[r][c] == "#" else ".")
                 elif sub_p[r][c] == "#":
-                    row.append("+")  # false positive
+                    row.append("+")
                 else:
-                    row.append("-")  # false negative
+                    row.append("-")
             diff_rows.append("".join(row))
 
         return {
@@ -391,10 +499,19 @@ class AsciiSideViewEnv(BaseEnv):
             "front_view": p.front,
             "expected_side": p.side,
             "submitted_side": submitted,
+            "parsed_side": stats["parsed_text"],
             "submitted_grid": json.dumps(sub_p),
             "expected_grid": json.dumps(exp_p),
             "diff_grid": json.dumps(diff_rows),
             "iou": f"{stats['iou']:.4f}",
+            "final_iou": f"{stats['iou']:.4f}",
+            "iou_delta": f"{stats['iou_delta']:.4f}",
+            "illegal_count": str(stats["illegal_count"]),
+            "illegal_penalty": f"{stats['illegal_penalty']:.4f}",
+            "size_mismatch": "true" if stats["size_mismatch"] else "false",
+            "size_penalty": f"{stats['size_penalty']:.4f}",
+            "expected_shape": json.dumps([stats["expected_h"], stats["expected_w"]]),
+            "submitted_shape": json.dumps([stats["submitted_h"], stats["submitted_w"]]),
             "exact_match": "true" if stats["exact"] else "false",
             "exact_numeric": "1" if stats["exact"] else "0",
             "matches": str(stats["matches"]),
@@ -403,4 +520,6 @@ class AsciiSideViewEnv(BaseEnv):
             "false_neg": str(stats["false_neg"]),
             "seed": str(self._seed),
             "steps_taken": str(self._steps),
+            "episode_reward": f"{self._episode_reward:.4f}",
+            "best_iou": f"{self._best_iou:.4f}",
         }

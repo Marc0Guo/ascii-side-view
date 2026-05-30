@@ -2,31 +2,31 @@
   "id": "ascii-side-view",
   "adapter": "adapter.py",
   "name": "Ascii Side View — 3D rotation from front to side",
-  "description": "Spatial reasoning benchmark: the agent receives a front-view ASCII voxel projection plus a natural-language object description, and must output the correct side view after a 90° rotation. Tests mental 3D rotation — a mug's handle vanishes from the side, L-shapes change silhouette, tunnels become visible or hidden.",
+  "description": "Fixed demo prompt (mug with handle on right): the same front-view ASCII is run many times. The agent outputs the side view after 90° rotation. Step reward = IoU improvement over the previous submission minus penalties for illegal characters and wrong grid dimensions.",
 
   "binding_vow": {
     "version": "1.0.0",
     "tier": "tier1",
-    "description": "Single-turn task. Observation: { task, description, front_view (ASCII with #/.), hint }. Action: free-text side-view ASCII art (# = solid, . = empty). Reward is IoU-based (0–1) with a bonus for exact grid match. Episode ends after one submission.",
+    "description": "Fixed mug prompt every episode (seed varies run id only). Up to 5 refinement steps per episode. Observation: { task, description, front_view, output_rules, example, steps_left; after step 1 also previous_iou, feedback }. Action: ASCII grid ONLY (# and .). Step reward = max(0, IoU − prev_IoU) − illegal_char_penalty − size_mismatch_penalty. Episode ends on exact match or step cap. Final score tracks final IoU.",
 
     "observation_space": {
       "type": "json",
-      "description": "{ task: string, description: string, front_view: string (multiline ASCII), hint: string }"
+      "description": "{ task, description, front_view, output_rules, example, steps_left, optional previous_iou/best_iou/previous_submission/feedback }"
     },
 
     "action_space": {
       "type": "text",
-      "description": "Multiline ASCII art of the side view. Use # for filled voxels and . for empty space. No explanation required — just the grid."
+      "description": "STRICT: side-view ASCII grid ONLY. Each line must use ONLY # (solid) and . (empty). Do NOT include any explanation, reasoning, labels, or markdown. Grid dimensions must match the expected canvas size."
     },
 
     "reward": {
       "type": "scalar",
-      "range": { "low": 0.0, "high": 1.0 },
-      "description": "IoU between submitted and expected side-view grids (0.85 weight) plus 0.15 exact-match bonus. Partial credit for close answers."
+      "range": { "low": -0.37, "high": 1.0 },
+      "description": "Per-step: IoU gain vs previous submission minus penalties (illegal chars: 0.02 each up to 0.25; wrong row/col count: 0.12). Episode total = sum of step rewards. Terminal final_iou reported in info."
     },
 
     "episode": {
-      "max_steps": 1,
+      "max_steps": 5,
       "deterministic_reset": true,
       "supports_seed": true,
       "parallel_episodes": 1,
@@ -40,7 +40,7 @@
     "primary_metric": "mean_iou",
     "higher_is_better": true,
     "metrics": [
-      { "name": "mean_iou", "type": "terminal_field", "field": "iou", "aggregation": "mean" },
+      { "name": "mean_iou", "type": "terminal_field", "field": "final_iou", "aggregation": "mean" },
       { "name": "exact_match_rate", "type": "terminal_field", "field": "exact_numeric", "aggregation": "mean" },
       { "name": "mean_episode_reward", "type": "episode_reward", "aggregation": "mean" }
     ]

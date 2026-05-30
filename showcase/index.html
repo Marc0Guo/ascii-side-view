@@ -123,11 +123,6 @@
   .hud b { color: var(--text); }
   .hud .pos { color: var(--good); }
   .hud .neg { color: var(--bad); }
-  .reasoning {
-    margin-top: 10px; padding: 10px; background: #0e1118; border-radius: 6px;
-    font-size: 12px; line-height: 1.55; max-height: 160px; overflow-y: auto;
-    color: #94a3b8; border-left: 3px solid var(--accent);
-  }
   .tooltip {
     position: fixed; pointer-events: none; z-index: 99; background: #1e2433;
     border: 1px solid var(--line); padding: 6px 10px; border-radius: 6px;
@@ -143,7 +138,7 @@
   <header>
     <div>
       <h1>ASCII SIDE VIEW</h1>
-      <div class="sub">Can an LLM rotate a voxel object 90° — front view → side view?</div>
+      <div class="sub">Same mug prompt · 7 independent runs · step reward = ΔIoU − penalties</div>
     </div>
     <div class="badge" id="model">—</div>
   </header>
@@ -178,17 +173,16 @@
 
     <aside>
       <div class="panel">
-        <h3>Exact match rate</h3>
+        <h3>Mean IoU (7 runs)</h3>
         <div class="stat-big" id="rate">—</div>
         <div class="stat-sub" id="rateSub">—</div>
       </div>
       <div class="panel">
         <h3>Live HUD</h3>
         <div class="hud" id="hud"></div>
-        <div class="reasoning" id="reasoning"></div>
       </div>
       <div class="panel">
-        <h3>Episodes</h3>
+        <h3>Runs · same prompt</h3>
         <div class="rail" id="rail"></div>
       </div>
       <div class="panel">
@@ -216,6 +210,35 @@ async function loadReplay() {
 }
 
 const DIFF_LEGEND = { '=': 'match', '.': 'empty', '+': 'fp', '-': 'fn' };
+
+function gridToAscii(gridJson) {
+  try {
+    const grid = JSON.parse(gridJson);
+    if (!Array.isArray(grid) || !grid.length) return '';
+    return grid.map(row => (Array.isArray(row) ? row.join('') : String(row))).join('\n');
+  } catch (e) { return ''; }
+}
+
+function extractAsciiOnly(text) {
+  if (!text) return '';
+  const lines = text.split('\n');
+  const blocks = [];
+  let cur = [];
+  for (const line of lines) {
+    const s = line.replace(/·/g, '.');
+    if (/^[#.\s]+$/.test(s) && /[#.]/.test(s)) cur.push(s.replace(/\s+$/, ''));
+    else if (cur.length) { blocks.push(cur); cur = []; }
+  }
+  if (cur.length) blocks.push(cur);
+  if (!blocks.length) return '';
+  return blocks.reduce((a, b) => a.length >= b.length ? a : b).join('\n');
+}
+
+function parsedSubmission(info, turn) {
+  return info.parsed_side
+    || gridToAscii(info.submitted_grid)
+    || extractAsciiOnly(info.submitted_side || turn.action || '');
+}
 
 function renderAscii(el, text, mode, hoverCb) {
   el.innerHTML = '';
@@ -287,7 +310,7 @@ class App {
       tip.textContent = `(${r},${c}) ${labels[ch] || ch}`;
     };
     renderAscii(document.getElementById('front'), info.front_view || '', 'solid', hover);
-    renderAscii(document.getElementById('submitted'), info.submitted_side || t.action || '', 'solid', hover);
+    renderAscii(document.getElementById('submitted'), parsedSubmission(info, t), 'solid', hover);
     let diffText = '';
     try {
       diffText = JSON.parse(info.diff_grid || '[]').join('\n');
@@ -295,36 +318,37 @@ class App {
     renderAscii(document.getElementById('diff'), diffText, 'diff', hover);
 
     const rw = t.reward;
-    const iou = info.iou || '—';
+    const iou = info.final_iou || info.iou || '—';
+    const iouDelta = info.iou_delta || '—';
     const exact = info.exact_match === 'true';
     document.getElementById('hud').innerHTML =
-      `turn <b>${this.ti + 1}</b> / ${this.turns().length}<br>` +
-      `reward <b class="${rw >= 0.85 ? 'pos' : 'neg'}">${rw.toFixed ? rw.toFixed(3) : rw}</b><br>` +
-      `IoU <b>${iou}</b> · exact <b>${exact ? 'yes' : 'no'}</b><br>` +
-      `puzzle <b>${info.puzzle_name || '—'}</b> · seed <b>${info.seed || '—'}</b><br>` +
-      `cells <b>${info.matches || 0}</b>/${info.total_cells || 0} · fp <b>${info.false_pos || 0}</b> fn <b>${info.false_neg || 0}</b>`;
-    document.getElementById('reasoning').textContent = t.reasoning || '(no reasoning captured)';
+      `run <b>${this.ei + 1}</b> / ${this.eps.length} · step <b>${this.ti + 1}</b> / ${this.turns().length}<br>` +
+      `step reward <b class="${rw >= 0 ? 'pos' : 'neg'}">${rw.toFixed ? rw.toFixed(3) : rw}</b><br>` +
+      `IoU <b>${iou}</b> · ΔIoU <b>${iouDelta}</b><br>` +
+      `penalties · illegal <b>${info.illegal_penalty || 0}</b> · size <b>${info.size_penalty || 0}</b><br>` +
+      `shape <b>${info.submitted_shape || '?'}</b> vs target <b>${info.expected_shape || '?'}</b><br>` +
+      `episode total <b>${info.episode_reward || rw}</b> · exact <b>${exact ? 'yes' : 'no'}</b>`;
     document.getElementById('scrubber').value = this.ti;
   }
 
   buildRail() {
     const rail = document.getElementById('rail');
     rail.innerHTML = '';
-    let exact = 0;
+    let iouSum = 0;
     this.eps.forEach((id, k) => {
       const last = this.data.replay[id][this.data.replay[id].length - 1];
-      const rw = last.reward;
-      const isExact = last.info?.exact_numeric === '1';
-      if (isExact) exact++;
+      const info = last.info || {};
+      const iou = parseFloat(info.final_iou || info.iou || 0);
+      iouSum += iou;
       const b = document.createElement('button');
-      b.className = 'cell-btn ' + (isExact ? 'great' : rw >= 0.7 ? 'ok' : 'bad');
-      b.title = `ep ${k + 1}: reward ${rw}`;
+      b.className = 'cell-btn ' + (iou >= 0.95 ? 'great' : iou >= 0.6 ? 'ok' : 'bad');
+      b.title = `Run ${k + 1} · IoU ${iou.toFixed(3)} · step reward ${last.reward}`;
       b.onclick = () => this.loadEpisode(k);
       rail.appendChild(b);
     });
-    const pct = this.eps.length ? exact / this.eps.length : 0;
-    document.getElementById('rate').textContent = Math.round(pct * 100) + '%';
-    document.getElementById('rateSub').textContent = `${exact} / ${this.eps.length} exact matches`;
+    const mean = this.eps.length ? iouSum / this.eps.length : 0;
+    document.getElementById('rate').textContent = (mean * 100).toFixed(0) + '%';
+    document.getElementById('rateSub').textContent = `mean IoU · ${this.eps.length} runs · same mug prompt`;
   }
 
   buildMeta() {
