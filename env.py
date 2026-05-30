@@ -10,6 +10,7 @@ Objects are defined as 3D voxel sets; views are max-projections onto the X–Y
 from __future__ import annotations
 
 import json
+import random
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -386,13 +387,14 @@ def score_side_view(submitted: str, expected: str) -> tuple[float, dict[str, Any
 
 
 class AsciiSideViewEnv(BaseEnv):
-    """Multi-step refinement on a fixed mug prompt. Step reward = IoU gain − penalties."""
+    """Multi-step refinement. Step reward = IoU gain − penalties. Default 7 steps × 7 episodes."""
 
     def __init__(self) -> None:
+        self._rng = random.Random()
         self._puzzle: Puzzle | None = None
         self._seed = 0
         self._steps = 0
-        self.max_steps = 5
+        self.max_steps = 7
         self._prev_iou = 0.0
         self._best_iou = 0.0
         self._episode_reward = 0.0
@@ -400,13 +402,14 @@ class AsciiSideViewEnv(BaseEnv):
 
     def reset(self, seed: int | None = None, **params: Any) -> dict[str, Any]:
         self._seed = 0 if seed is None else int(seed)
-        self.max_steps = min(35, int(params.get("max_steps", 5)))
+        self._rng.seed(self._seed)
+        self.max_steps = min(35, int(params.get("max_steps", 7)))
         self._steps = 0
         self._prev_iou = 0.0
         self._best_iou = 0.0
         self._episode_reward = 0.0
         self._last_parsed = ""
-        self._puzzle = MUG_PUZZLE
+        self._puzzle = self._rng.choice(CATALOG)
         return self._observation(include_feedback=False)
 
     def _observation(self, include_feedback: bool) -> dict[str, Any]:

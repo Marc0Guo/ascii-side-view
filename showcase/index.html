@@ -5,131 +5,204 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>ASCII SIDE VIEW — 3D rotation benchmark</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Syne:wght@500;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #0b0d12;
-    --panel: #12151c;
-    --line: #252a36;
-    --text: #d8dee9;
-    --muted: #6b7280;
-    --accent: #7c9cff;
-    --good: #4ade80;
-    --warn: #fbbf24;
-    --bad: #f87171;
-    --solid: #e2e8f0;
-    --mono: 'IBM Plex Mono', ui-monospace, monospace;
-    --sans: 'Space Grotesk', system-ui, sans-serif;
+    --bg: #080a0e;
+    --panel: #0f1218;
+    --panel2: #141922;
+    --line: #1e2633;
+    --text: #e8ecf4;
+    --muted: #5c6778;
+    --accent: #ffb020;
+    --accent2: #3dd6c6;
+    --good: #5ee08a;
+    --warn: #ffb020;
+    --bad: #ff6b6b;
+    --solid: #f0f4fa;
+    --mono: 'JetBrains Mono', ui-monospace, monospace;
+    --display: 'Syne', system-ui, sans-serif;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; }
   body {
-    background: radial-gradient(900px 500px at 20% -10%, #1a2030 0%, var(--bg) 55%);
+    background: var(--bg);
     color: var(--text);
-    font-family: var(--sans);
+    font-family: var(--mono);
     min-height: 100%;
   }
-  .wrap { max-width: 1200px; margin: 0 auto; padding: 24px 20px 64px; }
+  body::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(61,214,198,.08), transparent),
+                radial-gradient(ellipse 60% 40% at 100% 50%, rgba(255,176,32,.05), transparent);
+  }
+  body::after {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0; opacity: .04;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  .wrap { position: relative; z-index: 1; max-width: 1280px; margin: 0 auto; padding: 20px 20px 48px; }
   header {
     display: flex; justify-content: space-between; align-items: flex-end;
     gap: 16px; flex-wrap: wrap; border-bottom: 1px solid var(--line);
-    padding-bottom: 18px; margin-bottom: 20px;
+    padding-bottom: 16px; margin-bottom: 16px;
   }
-  h1 { font-size: 28px; letter-spacing: -0.02em; font-weight: 600; }
-  .sub { color: var(--muted); font-size: 15px; margin-top: 4px; }
+  h1 {
+    font-family: var(--display); font-size: 32px; font-weight: 800;
+    letter-spacing: -0.03em; line-height: 1;
+  }
+  h1 span { color: var(--accent2); }
+  .sub { color: var(--muted); font-size: 12px; margin-top: 6px; letter-spacing: .02em; }
   .badge {
-    font-family: var(--mono); font-size: 13px; background: var(--accent);
-    color: #0b0d12; padding: 6px 12px; border-radius: 6px; font-weight: 600;
+    font-size: 11px; background: var(--panel2); border: 1px solid var(--line);
+    color: var(--accent2); padding: 6px 12px; border-radius: 4px; font-weight: 600;
   }
-  .stage { display: grid; grid-template-columns: 1fr 300px; gap: 16px; }
-  @media (max-width: 900px) { .stage { grid-template-columns: 1fr; } }
+
+  .stage {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 280px;
+    grid-template-rows: auto;
+    gap: 14px;
+    align-items: start;
+  }
+  @media (max-width: 960px) { .stage { grid-template-columns: 1fr; } }
+
+  .main-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 
   .views {
-    display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px;
   }
   @media (max-width: 720px) { .views { grid-template-columns: 1fr; } }
 
   .view-panel {
-    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
-    padding: 12px; min-height: 220px; display: flex; flex-direction: column;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 10px 12px; min-height: 200px; display: flex; flex-direction: column;
   }
   .view-panel h3 {
-    font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em;
-    color: var(--muted); margin-bottom: 10px; font-weight: 600;
+    font-family: var(--display); font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.14em; color: var(--muted); margin-bottom: 8px; font-weight: 700;
   }
   .ascii-wrap {
     flex: 1; display: flex; align-items: center; justify-content: center;
-    overflow: auto; padding: 8px;
+    overflow: auto; padding: 6px; background: #06080c; border-radius: 4px;
+    border: 1px solid #151b24;
   }
   pre.ascii {
-    font-family: var(--mono); font-size: 14px; line-height: 1.15;
+    font-family: var(--mono); font-size: 13px; line-height: 1.12;
     letter-spacing: 0; white-space: pre; cursor: crosshair;
   }
   .cell { display: inline-block; width: 1ch; text-align: center; }
-  .cell.solid { color: var(--solid); text-shadow: 0 0 8px rgba(226,232,240,.35); }
-  .cell.empty { color: #334155; }
+  .cell.solid { color: var(--solid); text-shadow: 0 0 6px rgba(240,244,250,.25); }
+  .cell.empty { color: #2a3344; }
   .cell.match { color: var(--good); }
   .cell.fp { color: var(--warn); }
   .cell.fn { color: var(--bad); }
-  .cell.hover { outline: 1px solid var(--accent); background: rgba(124,156,255,.15); }
 
   .desc-bar {
-    margin-top: 14px; background: var(--panel); border: 1px solid var(--line);
-    border-radius: 10px; padding: 14px 16px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 12px 14px; display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: center;
   }
-  .desc-bar .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .1em; }
-  .desc-bar .text { font-size: 17px; margin-top: 6px; }
+  .desc-bar .label {
+    font-family: var(--display); font-size: 10px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .12em; white-space: nowrap;
+  }
+  .desc-bar .text { font-size: 14px; color: var(--text); }
 
   .controls {
-    margin-top: 14px; background: var(--panel); border: 1px solid var(--line);
-    border-radius: 10px; padding: 14px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px;
   }
-  .timeline-wrap { margin: 10px 0 14px; }
-  input[type=range] { width: 100%; accent-color: var(--accent); }
-  .ctrl-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .timeline-wrap { margin-top: 10px; }
+  input[type=range] { width: 100%; accent-color: var(--accent2); height: 4px; }
+  .ctrl-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
   button {
-    font-family: var(--mono); font-size: 13px; background: #1a2030; color: var(--text);
-    border: 1px solid var(--line); border-radius: 6px; padding: 8px 14px; cursor: pointer;
+    font-family: var(--mono); font-size: 12px; background: var(--panel2); color: var(--text);
+    border: 1px solid var(--line); border-radius: 4px; padding: 7px 12px; cursor: pointer;
+    transition: border-color .15s, color .15s;
   }
-  button:hover { border-color: var(--accent); color: var(--accent); }
-  button.primary { background: var(--accent); color: #0b0d12; border-color: var(--accent); font-weight: 600; }
-  button.primary:hover { filter: brightness(1.08); color: #0b0d12; }
-  .speed { display: flex; gap: 6px; margin-left: auto; }
-  .speed button { padding: 6px 10px; }
-  .speed button.on { background: var(--accent); color: #0b0d12; border-color: var(--accent); }
+  button:hover { border-color: var(--accent2); color: var(--accent2); }
+  button.primary { background: var(--accent2); color: #061010; border-color: var(--accent2); font-weight: 600; }
+  button.primary:hover { filter: brightness(1.1); color: #061010; }
+  .speed { display: flex; gap: 4px; margin-left: auto; }
+  .speed button { padding: 5px 8px; font-size: 11px; }
+  .speed button.on { background: var(--accent); color: #1a1000; border-color: var(--accent); }
 
-  aside { display: flex; flex-direction: column; gap: 12px; }
+  /* ── Sidebar: single column, no orphan rows ── */
+  aside {
+    display: flex; flex-direction: column; gap: 10px;
+    position: sticky; top: 16px;
+  }
   .panel {
-    background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px;
   }
   .panel h3 {
-    font-size: 11px; text-transform: uppercase; letter-spacing: .12em;
-    color: var(--muted); margin-bottom: 10px;
+    font-family: var(--display); font-size: 10px; text-transform: uppercase;
+    letter-spacing: .14em; color: var(--muted); margin-bottom: 10px; font-weight: 700;
   }
-  .stat-big { font-size: 36px; font-weight: 600; line-height: 1; }
-  .stat-sub { font-size: 13px; color: var(--muted); margin-top: 4px; }
+
+  /* Scoreboard: mean IoU + run scores in ONE panel */
+  .scoreboard { padding: 0; overflow: hidden; }
+  .scoreboard-inner {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto;
+    gap: 0;
+  }
+  .score-hero {
+    grid-column: 1 / -1;
+    padding: 14px 14px 10px;
+    border-bottom: 1px solid var(--line);
+    display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  }
+  .score-hero-left .stat-big {
+    font-family: var(--display); font-size: 42px; font-weight: 800;
+    line-height: 1; color: var(--accent);
+  }
+  .score-hero-left .stat-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .score-hero-right { text-align: right; font-size: 11px; color: var(--muted); line-height: 1.5; }
+  .score-hero-right b { color: var(--text); font-weight: 600; }
+
+  .metric-chip {
+    padding: 12px 14px; border-right: 1px solid var(--line);
+    border-top: none;
+  }
+  .metric-chip:last-child { border-right: none; }
+  .metric-chip .chip-label {
+    font-size: 9px; text-transform: uppercase; letter-spacing: .12em; color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .metric-chip .chip-val {
+    font-family: var(--display); font-size: 20px; font-weight: 700; color: var(--text);
+  }
+  .metric-chip .chip-val.pos { color: var(--good); }
+  .metric-chip .chip-val.neg { color: var(--bad); }
+
   .rail { display: flex; flex-wrap: wrap; gap: 5px; }
   .cell-btn {
-    width: 22px; height: 22px; border-radius: 4px; border: 1px solid var(--line);
-    cursor: pointer; font-size: 0; transition: transform .12s;
+    width: 24px; height: 24px; border-radius: 3px; border: 1px solid var(--line);
+    cursor: pointer; font-size: 0; transition: transform .12s, box-shadow .12s;
   }
-  .cell-btn:hover { transform: scale(1.15); }
-  .cell-btn.cur { outline: 2px solid var(--accent); outline-offset: 1px; }
-  .cell-btn.great { background: var(--good); }
-  .cell-btn.ok { background: var(--warn); }
-  .cell-btn.bad { background: var(--bad); opacity: .85; }
+  .cell-btn:hover { transform: scale(1.12); box-shadow: 0 0 8px rgba(61,214,198,.25); }
+  .cell-btn.cur { outline: 2px solid var(--accent2); outline-offset: 1px; }
+  .cell-btn.great { background: var(--good); border-color: #3a9e5c; }
+  .cell-btn.ok { background: var(--warn); border-color: #b8860a; }
+  .cell-btn.bad { background: var(--bad); border-color: #c44; opacity: .9; }
 
-  .hud { font-family: var(--mono); font-size: 13px; line-height: 1.65; color: var(--muted); }
-  .hud b { color: var(--text); }
+  .hud {
+    font-size: 12px; line-height: 1.7; color: var(--muted);
+    display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px;
+  }
+  .hud b { color: var(--text); font-weight: 600; }
   .hud .pos { color: var(--good); }
   .hud .neg { color: var(--bad); }
+  .hud .full { grid-column: 1 / -1; }
+  .hud span { display: block; }
+
   .tooltip {
-    position: fixed; pointer-events: none; z-index: 99; background: #1e2433;
-    border: 1px solid var(--line); padding: 6px 10px; border-radius: 6px;
-    font-family: var(--mono); font-size: 12px; display: none;
+    position: fixed; pointer-events: none; z-index: 99; background: #161c28;
+    border: 1px solid var(--line); padding: 6px 10px; border-radius: 4px;
+    font-size: 11px; display: none;
   }
-  footer { margin-top: 28px; text-align: center; color: var(--muted); font-size: 13px; }
-  footer a { color: var(--accent); text-decoration: none; }
+  footer { margin-top: 24px; text-align: center; color: var(--muted); font-size: 11px; }
+  footer a { color: var(--accent2); text-decoration: none; }
   .err { padding: 48px; text-align: center; color: var(--warn); }
 </style>
 </head>
@@ -137,22 +210,22 @@
 <div class="wrap" id="wrap">
   <header>
     <div>
-      <h1>ASCII SIDE VIEW</h1>
-      <div class="sub">Same mug prompt · 7 independent runs · step reward = ΔIoU − penalties</div>
+      <h1>ASCII <span>SIDE VIEW</span></h1>
+      <div class="sub">7 episodes · 7 refinement steps each · step reward = ΔIoU − penalties</div>
     </div>
     <div class="badge" id="model">—</div>
   </header>
 
   <div class="stage">
-    <div>
+    <div class="main-col">
       <div class="views">
         <div class="view-panel"><h3>Front view</h3><div class="ascii-wrap"><pre class="ascii" id="front"></pre></div></div>
         <div class="view-panel"><h3>Model submission</h3><div class="ascii-wrap"><pre class="ascii" id="submitted"></pre></div></div>
-        <div class="view-panel"><h3>Expected side · diff</h3><div class="ascii-wrap"><pre class="ascii" id="diff"></pre></div></div>
+        <div class="view-panel"><h3>Expected · diff</h3><div class="ascii-wrap"><pre class="ascii" id="diff"></pre></div></div>
       </div>
 
       <div class="desc-bar">
-        <div class="label">Object description</div>
+        <div class="label">Object</div>
         <div class="text" id="description">—</div>
       </div>
 
@@ -172,22 +245,32 @@
     </div>
 
     <aside>
-      <div class="panel">
-        <h3>Mean IoU (7 runs)</h3>
-        <div class="stat-big" id="rate">—</div>
-        <div class="stat-sub" id="rateSub">—</div>
+      <div class="panel scoreboard">
+        <div class="scoreboard-inner">
+          <div class="score-hero">
+            <div class="score-hero-left">
+              <div class="stat-big" id="rate">—</div>
+              <div class="stat-sub" id="rateSub">mean IoU</div>
+            </div>
+            <div class="score-hero-right" id="metaEp">—</div>
+          </div>
+          <div class="metric-chip">
+            <div class="chip-label">Run mean IoU</div>
+            <div class="chip-val" id="metaIou">—</div>
+          </div>
+          <div class="metric-chip">
+            <div class="chip-label">Mean reward</div>
+            <div class="chip-val" id="metaReward">—</div>
+          </div>
+        </div>
       </div>
       <div class="panel">
-        <h3>Live HUD</h3>
+        <h3>Live step</h3>
         <div class="hud" id="hud"></div>
       </div>
       <div class="panel">
-        <h3>Runs · same prompt</h3>
+        <h3>Episodes</h3>
         <div class="rail" id="rail"></div>
-      </div>
-      <div class="panel">
-        <h3>Run scores</h3>
-        <div class="hud" id="meta"></div>
       </div>
     </aside>
   </div>
@@ -322,12 +405,14 @@ class App {
     const iouDelta = info.iou_delta || '—';
     const exact = info.exact_match === 'true';
     document.getElementById('hud').innerHTML =
-      `run <b>${this.ei + 1}</b> / ${this.eps.length} · step <b>${this.ti + 1}</b> / ${this.turns().length}<br>` +
-      `step reward <b class="${rw >= 0 ? 'pos' : 'neg'}">${rw.toFixed ? rw.toFixed(3) : rw}</b><br>` +
-      `IoU <b>${iou}</b> · ΔIoU <b>${iouDelta}</b><br>` +
-      `penalties · illegal <b>${info.illegal_penalty || 0}</b> · size <b>${info.size_penalty || 0}</b><br>` +
-      `shape <b>${info.submitted_shape || '?'}</b> vs target <b>${info.expected_shape || '?'}</b><br>` +
-      `episode total <b>${info.episode_reward || rw}</b> · exact <b>${exact ? 'yes' : 'no'}</b>`;
+      `<span class="full">episode <b>${this.ei + 1}</b>/${this.eps.length} · <b>${info.puzzle_name || 'object'}</b></span>` +
+      `<span>step <b>${this.ti + 1}</b>/${this.turns().length}</span>` +
+      `<span>reward <b class="${rw >= 0 ? 'pos' : 'neg'}">${rw.toFixed ? rw.toFixed(3) : rw}</b></span>` +
+      `<span>IoU <b>${iou}</b></span>` +
+      `<span>ΔIoU <b>${iouDelta}</b></span>` +
+      `<span>illegal <b>${info.illegal_penalty || 0}</b></span>` +
+      `<span>size <b>${info.size_penalty || 0}</b></span>` +
+      `<span class="full">shape <b>${info.submitted_shape || '?'}</b> → <b>${info.expected_shape || '?'}</b> · exact <b>${exact ? 'yes' : 'no'}</b></span>`;
     document.getElementById('scrubber').value = this.ti;
   }
 
@@ -340,23 +425,30 @@ class App {
       const info = last.info || {};
       const iou = parseFloat(info.final_iou || info.iou || 0);
       iouSum += iou;
+      const name = info.puzzle_name || `object ${k + 1}`;
       const b = document.createElement('button');
       b.className = 'cell-btn ' + (iou >= 0.95 ? 'great' : iou >= 0.6 ? 'ok' : 'bad');
-      b.title = `Run ${k + 1} · IoU ${iou.toFixed(3)} · step reward ${last.reward}`;
+      b.title = `Episode ${k + 1} · ${name} · IoU ${iou.toFixed(3)}`;
       b.onclick = () => this.loadEpisode(k);
       rail.appendChild(b);
     });
     const mean = this.eps.length ? iouSum / this.eps.length : 0;
     document.getElementById('rate').textContent = (mean * 100).toFixed(0) + '%';
-    document.getElementById('rateSub').textContent = `mean IoU · ${this.eps.length} runs · same mug prompt`;
+    document.getElementById('rateSub').textContent = `${this.eps.length} objects`;
   }
 
   buildMeta() {
     const sc = this.data.run?.scores || {};
-    document.getElementById('meta').innerHTML =
-      `mean IoU · <b>${sc.mean_iou != null ? (+sc.mean_iou).toFixed(3) : '—'}</b><br>` +
-      `mean reward · <b>${sc.mean_episode_reward != null ? (+sc.mean_episode_reward).toFixed(3) : '—'}</b><br>` +
-      `episodes · <b>${this.eps.length}</b>`;
+    const meanIou = sc.mean_iou != null ? (+sc.mean_iou) : null;
+    const meanRw = sc.mean_episode_reward != null ? (+sc.mean_episode_reward) : null;
+    document.getElementById('metaEp').innerHTML =
+      `<b>${this.eps.length}</b> episodes<br>benchmark run`;
+    const iouEl = document.getElementById('metaIou');
+    iouEl.textContent = meanIou != null ? meanIou.toFixed(3) : '—';
+    iouEl.className = 'chip-val' + (meanIou != null && meanIou >= 0.6 ? ' pos' : meanIou != null ? ' neg' : '');
+    const rwEl = document.getElementById('metaReward');
+    rwEl.textContent = meanRw != null ? meanRw.toFixed(3) : '—';
+    rwEl.className = 'chip-val' + (meanRw != null && meanRw >= 0 ? ' pos' : meanRw != null ? ' neg' : '');
   }
 
   buildSpeed() {

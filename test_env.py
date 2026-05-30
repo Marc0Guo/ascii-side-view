@@ -48,14 +48,17 @@ def test_smart_vs_dumb() -> None:
     env = AsciiSideViewEnv()
     smart_rewards: list[float] = []
     dumb_rewards: list[float] = []
-    expected = MUG_PUZZLE.side
 
     for seed in range(20):
-        env.reset(seed=seed)
+        obs = env.reset(seed=seed)
+        assert env._puzzle is not None
+        expected = env._puzzle.side
+        front = obs["front_view"]
+
         smart_rewards.append(env.step(expected).reward)
 
         env.reset(seed=seed)
-        dumb_rewards.append(env.step(MUG_PUZZLE.front).reward)
+        dumb_rewards.append(env.step(front).reward)
 
     smart_mean = sum(smart_rewards) / len(smart_rewards)
     dumb_mean = sum(dumb_rewards) / len(dumb_rewards)
@@ -66,12 +69,14 @@ def test_smart_vs_dumb() -> None:
     print("smart-vs-dumb: OK")
 
 
-def test_same_prompt_every_seed() -> None:
+def test_different_prompts_per_seed() -> None:
     env = AsciiSideViewEnv()
-    first = env.reset(seed=0)["front_view"]
-    for seed in range(1, 30):
-        assert env.reset(seed=seed)["front_view"] == first
-    print("same-prompt-all-seeds: OK")
+    seen: set[str] = set()
+    for seed in range(min(12, len(CATALOG))):
+        obs = env.reset(seed=seed)
+        seen.add(obs["front_view"])
+    assert len(seen) >= 2, "seeds should pick different objects from catalog"
+    print(f"different-prompts-per-seed: OK ({len(seen)} unique fronts in 12 seeds)")
 
 
 def test_iou_delta_multistep() -> None:
@@ -135,7 +140,7 @@ if __name__ == "__main__":
     test_catalog_nonempty()
     test_mug_example()
     test_prose_stripped_from_parse()
-    test_same_prompt_every_seed()
+    test_different_prompts_per_seed()
     test_illegal_char_penalty()
     test_iou_delta_multistep()
     test_determinism()

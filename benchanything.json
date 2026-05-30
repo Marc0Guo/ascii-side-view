@@ -2,12 +2,12 @@
   "id": "ascii-side-view",
   "adapter": "adapter.py",
   "name": "Ascii Side View — 3D rotation from front to side",
-  "description": "Fixed demo prompt (mug with handle on right): the same front-view ASCII is run many times. The agent outputs the side view after 90° rotation. Step reward = IoU improvement over the previous submission minus penalties for illegal characters and wrong grid dimensions.",
+  "description": "Spatial reasoning benchmark: each episode is a different 3D object. The agent receives a front-view ASCII projection plus a description and must output the side view after 90° rotation. Step reward = IoU improvement minus penalties for illegal characters and wrong grid dimensions.",
 
   "binding_vow": {
     "version": "1.0.0",
     "tier": "tier1",
-    "description": "Fixed mug prompt every episode (seed varies run id only). Up to 5 refinement steps per episode. Observation: { task, description, front_view, output_rules, example, steps_left; after step 1 also previous_iou, feedback }. Action: ASCII grid ONLY (# and .). Step reward = max(0, IoU − prev_IoU) − illegal_char_penalty − size_mismatch_penalty. Episode ends on exact match or step cap. Final score tracks final IoU.",
+    "description": "Each episode samples a different object (deterministic by seed). Exactly 7 refinement steps per episode. Step reward = max(0, IoU − prev_IoU) − penalties. Terminal final_iou in info.",
 
     "observation_space": {
       "type": "json",
@@ -26,7 +26,7 @@
     },
 
     "episode": {
-      "max_steps": 5,
+      "max_steps": 7,
       "deterministic_reset": true,
       "supports_seed": true,
       "parallel_episodes": 1,
