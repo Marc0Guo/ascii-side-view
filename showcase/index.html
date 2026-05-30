@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ASCII SIDE VIEW — 3D rotation benchmark</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0b0d12;
+    --panel: #12151c;
+    --line: #252a36;
+    --text: #d8dee9;
+    --muted: #6b7280;
+    --accent: #7c9cff;
+    --good: #4ade80;
+    --warn: #fbbf24;
+    --bad: #f87171;
+    --solid: #e2e8f0;
+    --mono: 'IBM Plex Mono', ui-monospace, monospace;
+    --sans: 'Space Grotesk', system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: radial-gradient(900px 500px at 20% -10%, #1a2030 0%, var(--bg) 55%);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100%;
+  }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 24px 20px 64px; }
+  header {
+    display: flex; justify-content: space-between; align-items: flex-end;
+    gap: 16px; flex-wrap: wrap; border-bottom: 1px solid var(--line);
+    padding-bottom: 18px; margin-bottom: 20px;
+  }
+  h1 { font-size: 28px; letter-spacing: -0.02em; font-weight: 600; }
+  .sub { color: var(--muted); font-size: 15px; margin-top: 4px; }
+  .badge {
+    font-family: var(--mono); font-size: 13px; background: var(--accent);
+    color: #0b0d12; padding: 6px 12px; border-radius: 6px; font-weight: 600;
+  }
+  .stage { display: grid; grid-template-columns: 1fr 300px; gap: 16px; }
+  @media (max-width: 900px) { .stage { grid-template-columns: 1fr; } }
+
+  .views {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+  }
+  @media (max-width: 720px) { .views { grid-template-columns: 1fr; } }
+
+  .view-panel {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px; min-height: 220px; display: flex; flex-direction: column;
+  }
+  .view-panel h3 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em;
+    color: var(--muted); margin-bottom: 10px; font-weight: 600;
+  }
+  .ascii-wrap {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    overflow: auto; padding: 8px;
+  }
+  pre.ascii {
+    font-family: var(--mono); font-size: 14px; line-height: 1.15;
+    letter-spacing: 0; white-space: pre; cursor: crosshair;
+  }
+  .cell { display: inline-block; width: 1ch; text-align: center; }
+  .cell.solid { color: var(--solid); text-shadow: 0 0 8px rgba(226,232,240,.35); }
+  .cell.empty { color: #334155; }
+  .cell.match { color: var(--good); }
+  .cell.fp { color: var(--warn); }
+  .cell.fn { color: var(--bad); }
+  .cell.hover { outline: 1px solid var(--accent); background: rgba(124,156,255,.15); }
+
+  .desc-bar {
+    margin-top: 14px; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; padding: 14px 16px;
+  }
+  .desc-bar .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .1em; }
+  .desc-bar .text { font-size: 17px; margin-top: 6px; }
+
+  .controls {
+    margin-top: 14px; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; padding: 14px;
+  }
+  .timeline-wrap { margin: 10px 0 14px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .ctrl-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  button {
+    font-family: var(--mono); font-size: 13px; background: #1a2030; color: var(--text);
+    border: 1px solid var(--line); border-radius: 6px; padding: 8px 14px; cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  button.primary { background: var(--accent); color: #0b0d12; border-color: var(--accent); font-weight: 600; }
+  button.primary:hover { filter: brightness(1.08); color: #0b0d12; }
+  .speed { display: flex; gap: 6px; margin-left: auto; }
+  .speed button { padding: 6px 10px; }
+  .speed button.on { background: var(--accent); color: #0b0d12; border-color: var(--accent); }
+
+  aside { display: flex; flex-direction: column; gap: 12px; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px;
+  }
+  .panel h3 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .12em;
+    color: var(--muted); margin-bottom: 10px;
+  }
+  .stat-big { font-size: 36px; font-weight: 600; line-height: 1; }
+  .stat-sub { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .rail { display: flex; flex-wrap: wrap; gap: 5px; }
+  .cell-btn {
+    width: 22px; height: 22px; border-radius: 4px; border: 1px solid var(--line);
+    cursor: pointer; font-size: 0; transition: transform .12s;
+  }
+  .cell-btn:hover { transform: scale(1.15); }
+  .cell-btn.cur { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .cell-btn.great { background: var(--good); }
+  .cell-btn.ok { background: var(--warn); }
+  .cell-btn.bad { background: var(--bad); opacity: .85; }
+
+  .hud { font-family: var(--mono); font-size: 13px; line-height: 1.65; color: var(--muted); }
+  .hud b { color: var(--text); }
+  .hud .pos { color: var(--good); }
+  .hud .neg { color: var(--bad); }
+  .reasoning {
+    margin-top: 10px; padding: 10px; background: #0e1118; border-radius: 6px;
+    font-size: 12px; line-height: 1.55; max-height: 160px; overflow-y: auto;
+    color: #94a3b8; border-left: 3px solid var(--accent);
+  }
+  .tooltip {
+    position: fixed; pointer-events: none; z-index: 99; background: #1e2433;
+    border: 1px solid var(--line); padding: 6px 10px; border-radius: 6px;
+    font-family: var(--mono); font-size: 12px; display: none;
+  }
+  footer { margin-top: 28px; text-align: center; color: var(--muted); font-size: 13px; }
+  footer a { color: var(--accent); text-decoration: none; }
+  .err { padding: 48px; text-align: center; color: var(--warn); }
+</style>
+</head>
+<body>
+<div class="wrap" id="wrap">
+  <header>
+    <div>
+      <h1>ASCII SIDE VIEW</h1>
+      <div class="sub">Can an LLM rotate a voxel object 90° — front view → side view?</div>
+    </div>
+    <div class="badge" id="model">—</div>
+  </header>
+
+  <div class="stage">
+    <div>
+      <div class="views">
+        <div class="view-panel"><h3>Front view</h3><div class="ascii-wrap"><pre class="ascii" id="front"></pre></div></div>
+        <div class="view-panel"><h3>Model submission</h3><div class="ascii-wrap"><pre class="ascii" id="submitted"></pre></div></div>
+        <div class="view-panel"><h3>Expected side · diff</h3><div class="ascii-wrap"><pre class="ascii" id="diff"></pre></div></div>
+      </div>
+
+      <div class="desc-bar">
+        <div class="label">Object description</div>
+        <div class="text" id="description">—</div>
+      </div>
+
+      <div class="controls">
+        <div class="ctrl-row">
+          <button id="prevEp">‹ ep</button>
+          <button id="stepBack">◀ step</button>
+          <button class="primary" id="play">▶ play</button>
+          <button id="stepFwd">step ▶</button>
+          <button id="nextEp">ep ›</button>
+          <div class="speed" id="speed"></div>
+        </div>
+        <div class="timeline-wrap">
+          <input type="range" id="scrubber" min="0" max="0" value="0" />
+        </div>
+      </div>
+    </div>
+
+    <aside>
+      <div class="panel">
+        <h3>Exact match rate</h3>
+        <div class="stat-big" id="rate">—</div>
+        <div class="stat-sub" id="rateSub">—</div>
+      </div>
+      <div class="panel">
+        <h3>Live HUD</h3>
+        <div class="hud" id="hud"></div>
+        <div class="reasoning" id="reasoning"></div>
+      </div>
+      <div class="panel">
+        <h3>Episodes</h3>
+        <div class="rail" id="rail"></div>
+      </div>
+      <div class="panel">
+        <h3>Run scores</h3>
+        <div class="hud" id="meta"></div>
+      </div>
+    </aside>
+  </div>
+
+  <footer>
+    Interactive Mesocosm replay · <a href="https://github.com/Marc0Guo/ascii-side-view" target="_blank">ascii-side-view</a>
+  </footer>
+</div>
+<div class="tooltip" id="tip"></div>
+
+<script src="data/replay.js" onerror="window.__noJs=1"></script>
+<script>
+async function loadReplay() {
+  if (window.REPLAY) return window.REPLAY;
+  try {
+    const r = await fetch('data/replay.json');
+    if (r.ok) return await r.json();
+  } catch (e) {}
+  return null;
+}
+
+const DIFF_LEGEND = { '=': 'match', '.': 'empty', '+': 'fp', '-': 'fn' };
+
+function renderAscii(el, text, mode, hoverCb) {
+  el.innerHTML = '';
+  const lines = (text || '').split('\n');
+  lines.forEach((line, r) => {
+    [...line].forEach((ch, c) => {
+      const span = document.createElement('span');
+      span.className = 'cell';
+      span.textContent = ch === ' ' ? '·' : ch;
+      if (mode === 'solid') {
+        span.classList.add(ch === '#' ? 'solid' : 'empty');
+      } else if (mode === 'diff') {
+        span.classList.add(DIFF_LEGEND[ch] || 'empty');
+      }
+      span.dataset.r = r; span.dataset.c = c; span.dataset.ch = ch;
+      span.onmouseenter = e => hoverCb && hoverCb(e, r, c, ch, mode);
+      span.onmouseleave = () => { document.getElementById('tip').style.display = 'none'; };
+      el.appendChild(span);
+    });
+    el.appendChild(document.createTextNode('\n'));
+  });
+}
+
+class App {
+  constructor(data) {
+    this.data = data;
+    this.eps = Object.keys(data.replay || {}).filter(id => {
+      const t = data.replay[id];
+      return t && t.length && t[0].info && t[0].info.front_view;
+    });
+    this.ei = 0; this.ti = 0; this.playing = false; this.speed = 1;
+    this._timer = null;
+    const model = data.run?.config?.agent_config?.model || data.run?.config?.model || 'model';
+    document.getElementById('model').textContent = model;
+    this.buildRail();
+    this.buildMeta();
+    this.buildSpeed();
+    this.bindControls();
+    this.loadEpisode(0);
+  }
+
+  turns() { return this.data.replay[this.eps[this.ei]] || []; }
+  turn() { return this.turns()[this.ti]; }
+
+  loadEpisode(idx) {
+    this.ei = (idx + this.eps.length) % this.eps.length;
+    this.ti = 0;
+    this.playing = false;
+    document.getElementById('play').textContent = '▶ play';
+    const turns = this.turns();
+    const scrub = document.getElementById('scrubber');
+    scrub.max = Math.max(0, turns.length - 1);
+    scrub.value = 0;
+    document.querySelectorAll('.cell-btn').forEach((b, k) => b.classList.toggle('cur', k === this.ei));
+    this.renderTurn();
+  }
+
+  renderTurn() {
+    const t = this.turn();
+    if (!t) return;
+    const info = t.info || {};
+    document.getElementById('description').textContent = info.description || '—';
+    const tip = document.getElementById('tip');
+    const hover = (e, r, c, ch, mode) => {
+      tip.style.display = 'block';
+      tip.style.left = (e.clientX + 12) + 'px';
+      tip.style.top = (e.clientY + 12) + 'px';
+      const labels = { '#': 'solid voxel', '.': 'empty', '=': 'correct', '+': 'extra (false +)', '-': 'missing (false −)' };
+      tip.textContent = `(${r},${c}) ${labels[ch] || ch}`;
+    };
+    renderAscii(document.getElementById('front'), info.front_view || '', 'solid', hover);
+    renderAscii(document.getElementById('submitted'), info.submitted_side || t.action || '', 'solid', hover);
+    let diffText = '';
+    try {
+      diffText = JSON.parse(info.diff_grid || '[]').join('\n');
+    } catch (e) { diffText = ''; }
+    renderAscii(document.getElementById('diff'), diffText, 'diff', hover);
+
+    const rw = t.reward;
+    const iou = info.iou || '—';
+    const exact = info.exact_match === 'true';
+    document.getElementById('hud').innerHTML =
+      `turn <b>${this.ti + 1}</b> / ${this.turns().length}<br>` +
+      `reward <b class="${rw >= 0.85 ? 'pos' : 'neg'}">${rw.toFixed ? rw.toFixed(3) : rw}</b><br>` +
+      `IoU <b>${iou}</b> · exact <b>${exact ? 'yes' : 'no'}</b><br>` +
+      `puzzle <b>${info.puzzle_name || '—'}</b> · seed <b>${info.seed || '—'}</b><br>` +
+      `cells <b>${info.matches || 0}</b>/${info.total_cells || 0} · fp <b>${info.false_pos || 0}</b> fn <b>${info.false_neg || 0}</b>`;
+    document.getElementById('reasoning').textContent = t.reasoning || '(no reasoning captured)';
+    document.getElementById('scrubber').value = this.ti;
+  }
+
+  buildRail() {
+    const rail = document.getElementById('rail');
+    rail.innerHTML = '';
+    let exact = 0;
+    this.eps.forEach((id, k) => {
+      const last = this.data.replay[id][this.data.replay[id].length - 1];
+      const rw = last.reward;
+      const isExact = last.info?.exact_numeric === '1';
+      if (isExact) exact++;
+      const b = document.createElement('button');
+      b.className = 'cell-btn ' + (isExact ? 'great' : rw >= 0.7 ? 'ok' : 'bad');
+      b.title = `ep ${k + 1}: reward ${rw}`;
+      b.onclick = () => this.loadEpisode(k);
+      rail.appendChild(b);
+    });
+    const pct = this.eps.length ? exact / this.eps.length : 0;
+    document.getElementById('rate').textContent = Math.round(pct * 100) + '%';
+    document.getElementById('rateSub').textContent = `${exact} / ${this.eps.length} exact matches`;
+  }
+
+  buildMeta() {
+    const sc = this.data.run?.scores || {};
+    document.getElementById('meta').innerHTML =
+      `mean IoU · <b>${sc.mean_iou != null ? (+sc.mean_iou).toFixed(3) : '—'}</b><br>` +
+      `mean reward · <b>${sc.mean_episode_reward != null ? (+sc.mean_episode_reward).toFixed(3) : '—'}</b><br>` +
+      `episodes · <b>${this.eps.length}</b>`;
+  }
+
+  buildSpeed() {
+    const box = document.getElementById('speed');
+    [[0.5, '0.5×'], [1, '1×'], [2, '2×'], [4, '4×']].forEach(([v, lbl]) => {
+      const b = document.createElement('button');
+      b.textContent = lbl;
+      if (v === 1) b.classList.add('on');
+      b.onclick = () => {
+        this.speed = v;
+        [...box.children].forEach(c => c.classList.toggle('on', c === b));
+      };
+      box.appendChild(b);
+    });
+  }
+
+  bindControls() {
+    document.getElementById('play').onclick = () => this.togglePlay();
+    document.getElementById('stepBack').onclick = () => this.seek(this.ti - 1);
+    document.getElementById('stepFwd').onclick = () => this.seek(this.ti + 1);
+    document.getElementById('prevEp').onclick = () => this.loadEpisode(this.ei - 1);
+    document.getElementById('nextEp').onclick = () => this.loadEpisode(this.ei + 1);
+    document.getElementById('scrubber').oninput = e => this.seek(+e.target.value);
+    document.onkeydown = e => {
+      if (e.code === 'Space') { e.preventDefault(); this.togglePlay(); }
+      if (e.code === 'ArrowLeft') this.seek(this.ti - 1);
+      if (e.code === 'ArrowRight') this.seek(this.ti + 1);
+    };
+  }
+
+  seek(ti) {
+    const max = this.turns().length - 1;
+    this.ti = Math.max(0, Math.min(max, ti));
+    this.renderTurn();
+  }
+
+  togglePlay() {
+    this.playing = !this.playing;
+    document.getElementById('play').textContent = this.playing ? '⏸ pause' : '▶ play';
+    if (this.playing) this.tick();
+    else clearTimeout(this._timer);
+  }
+
+  tick() {
+    if (!this.playing) return;
+    const max = this.turns().length - 1;
+    if (this.ti < max) {
+      this.seek(this.ti + 1);
+      this._timer = setTimeout(() => this.tick(), 900 / this.speed);
+    } else {
+      this.playing = false;
+      document.getElementById('play').textContent = '▶ play';
+      setTimeout(() => this.loadEpisode(this.ei + 1), 1200 / this.speed);
+    }
+  }
+}
+
+loadReplay().then(d => {
+  if (!d || !d.replay || !Object.keys(d.replay).length) {
+    document.getElementById('wrap').innerHTML =
+      '<div class="err">No replay data.<br><br>Run <b>python showcase/gen_sample.py</b> or export from mesocosm.</div>';
+    return;
+  }
+  new App(d);
+});
+</script>
+</body>
+</html>
